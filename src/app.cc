@@ -17,9 +17,8 @@ static constexpr const char * TZ_PACIFIC = "PST8PDT,M3.2.0,M11.1.0";
 
 const int App::POLL_INTERVALS[App::POLL_INTERVAL_COUNT] = {60, 120, 300, 1800};
 
-App::App()
-    : m_lvgl_display(m_epaper)
-    , m_poll_interval_idx(0) {
+App::App() :
+    m_lvgl_display(m_epaper) {
     m_http_result_queue = xQueueCreate(1, sizeof(HttpResult));
     m_button_queue = xQueueCreate(8, sizeof(ButtonEvent));
 }
@@ -97,7 +96,9 @@ void App::handleButton(const ButtonEvent & event) {
     }
 
     case ButtonId::EXIT:
-        lprintf(TAG, "EXIT pressed — entering deep sleep");
+        lprintf(TAG, "EXIT pressed — showing stale indicator then sleeping");
+        m_screen.setError(true);
+        m_lvgl_display.tick();  // flush error icon to e-paper before sleep
         esp_sleep_enable_ext0_wakeup(GPIO_NUM_2, 0);
         esp_deep_sleep_start();
         break;
@@ -115,8 +116,8 @@ void App::handleHttpResult(const HttpResult & result) {
         return;
     }
 
-    lprintf(TAG, "Got player count: %ld, visits: %ld",
-            (long)result.player_count, (long)result.visits);
+    lprintf(TAG, "Got player count: %d, visits: %d",
+            result.player_count, result.visits);
 
     char fetch_time[8] = "00:00";
     time_t now_ts = time(nullptr);

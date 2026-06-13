@@ -74,7 +74,7 @@ static bool doGet(const char * url, std::vector<char> & out_body) {
 }
 
 // Extract integer after key (e.g. "\"playing\":") using strstr + strtol.
-static bool extractInt(const char * body, const char * key, int32_t & out) {
+static bool extractInt(const char * body, const char * key, int & out) {
     const char * p = strstr(body, key);
     if (!p) return false;
     p += strlen(key);
@@ -122,13 +122,6 @@ void httpPollerTask(void * arg) {
     static_cast<HttpPoller *>(arg)->run();
 }
 
-HttpPoller::HttpPoller()
-    : m_wifi(nullptr)
-    , m_result_queue(nullptr)
-    , m_poll_interval_sec(30)
-    , m_force_fetch(false) {}
-
-HttpPoller::~HttpPoller() {}
 
 void HttpPoller::init(Wifi & wifi, QueueHandle_t result_queue) {
     m_wifi = &wifi;
@@ -203,8 +196,8 @@ bool HttpPoller::fetchGames(HttpResult & result) {
     }
 
     if (ok) {
-        lprintf(TAG, "Games: %ld players, %ld visits, name=\"%s\"",
-                (long)result.player_count, (long)result.visits, result.game_name);
+        lprintf(TAG, "Games: %d players, %d visits, name=\"%s\"",
+                result.player_count, result.visits, result.game_name);
     }
     return ok;
 }
@@ -219,7 +212,7 @@ bool HttpPoller::fetchVotes(HttpResult & result) {
     ok &= extractInt(data, "\"downVotes\":", result.down_votes);
 
     if (ok) {
-        lprintf(TAG, "Votes: %ld up, %ld down", (long)result.up_votes, (long)result.down_votes);
+        lprintf(TAG, "Votes: %d up, %d down", result.up_votes, result.down_votes);
     } else {
         eprintf(TAG, "Votes parse failed (body: %.60s)", body.data());
     }

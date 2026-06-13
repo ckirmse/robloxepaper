@@ -78,7 +78,7 @@ src/
 
 ### Key Design Decisions
 
-**LVGL + e-paper:** LVGL renders in 16-bit RGB565 into a 240KB PSRAM buffer. The flush callback thresholds each pixel at 0x8000 and packs to 1-bit for SSD1683. `lv_tick_set_cb` uses `esp_timer_get_time()`. The flush callback blocks until the e-paper refresh completes (~1s fast, ~4s full).
+**LVGL + e-paper:** LVGL renders in 16-bit RGB565 into a 240KB PSRAM buffer. The flush callback thresholds each pixel at `>= 0x8000` (white) or below (black) and packs the result into a 15KB 1-bit buffer, which is then written to the SSD1683. Using LVGL's I1 display format instead would require `LV_COLOR_DEPTH=1` globally, which LVGL v9 does not support — so the RGB565+conversion approach is correct and intentional. `lv_tick_set_cb` uses `esp_timer_get_time()`. The flush callback blocks until the e-paper refresh completes (~1s fast, ~4s full).
 
 **E-paper refresh modes:** First display after boot uses `fullRefresh()` (~4s) to clear any ghost image. All subsequent updates use `fastRefresh()` (~1s). Pressing OK triggers `requestFullRefresh()` to force the next update to be a full refresh.
 

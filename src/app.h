@@ -32,10 +32,10 @@ private:
     Buttons m_buttons;
     PlayerCountScreen m_screen;
 
-    QueueHandle_t m_http_result_queue;
-    QueueHandle_t m_button_queue;
+    QueueHandle_t m_http_result_queue = nullptr;
+    QueueHandle_t m_button_queue = nullptr;
 
-    int m_poll_interval_idx;
+    int m_poll_interval_idx = 0;
 
     void handleButton(const ButtonEvent & event);
     void handleHttpResult(const HttpResult & result);

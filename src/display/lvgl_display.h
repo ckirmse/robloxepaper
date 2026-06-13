@@ -24,10 +24,10 @@ public:
 
 private:
     Epaper & m_epaper;
-    lv_display_t * m_lv_display;
-    uint8_t * m_lv_buf;
-    uint8_t * m_epaper_buf;  // heap-allocated in init() to avoid stack overflow
-    bool m_first_refresh;
+    lv_display_t * m_lv_display = nullptr;
+    uint8_t * m_lv_buf = nullptr;   // 240KB RGB565 draw buffer in PSRAM
+    uint8_t * m_epaper_buf = nullptr; // 15KB 1-bit epaper buffer, heap-allocated
+    bool m_first_refresh = true;
 
     friend void lvglFlushCallback(lv_display_t * disp, const lv_area_t * area, uint8_t * px_map);
 };

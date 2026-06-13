@@ -18,8 +18,8 @@ static constexpr int EPD_PIN_PWR_SYSTEM = 41;
 
 class Epaper {
 public:
-    Epaper();
-    ~Epaper();
+    Epaper() = default;
+    ~Epaper() = default;
 
     Epaper(const Epaper &) = delete;
     Epaper & operator=(const Epaper &) = delete;
@@ -35,7 +35,7 @@ public:
     void sleep();
 
 private:
-    bool m_initialized;
+    bool m_initialized = false;
 
     void powerOn();
     void gpioInit();

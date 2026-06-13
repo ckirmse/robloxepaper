@@ -13,22 +13,22 @@ LV_FONT_DECLARE(lv_font_builder_sans_semibold_28)
 LV_FONT_DECLARE(lv_font_builder_sans_semibold_16)
 
 // Format a non-negative integer with comma separators into buf.
-static void fmtNumber(char * buf, size_t buf_size, int32_t val) {
+static void formatNumber(char * buf, size_t buf_size, int val) {
     if (val < 0) {
-        snprintf(buf, buf_size, "%ld", (long)val);
+        snprintf(buf, buf_size, "%d", val);
         return;
     }
     if (val >= 1000000) {
-        snprintf(buf, buf_size, "%ld,%03ld,%03ld",
-                 (long)(val / 1000000),
-                 (long)((val / 1000) % 1000),
-                 (long)(val % 1000));
+        snprintf(buf, buf_size, "%d,%03d,%03d",
+                 val / 1000000,
+                 (val / 1000) % 1000,
+                 val % 1000);
     } else if (val >= 1000) {
-        snprintf(buf, buf_size, "%ld,%03ld",
-                 (long)(val / 1000),
-                 (long)(val % 1000));
+        snprintf(buf, buf_size, "%d,%03d",
+                 val / 1000,
+                 val % 1000);
     } else {
-        snprintf(buf, buf_size, "%ld", (long)val);
+        snprintf(buf, buf_size, "%d", val);
     }
 }
 
@@ -59,22 +59,6 @@ static lv_obj_t * makeDivider(lv_obj_t * parent, int y) {
     return div;
 }
 
-PlayerCountScreen::PlayerCountScreen()
-    : m_screen(nullptr)
-    , m_name_label(nullptr)
-    , m_div1(nullptr)
-    , m_count_label(nullptr)
-    , m_players_label(nullptr)
-    , m_div2(nullptr)
-    , m_visits_label(nullptr)
-    , m_upvotes_label(nullptr)
-    , m_div3(nullptr)
-    , m_game_update_label(nullptr)
-    , m_fetch_time_label(nullptr)
-    , m_error_icon(nullptr) {}
-
-PlayerCountScreen::~PlayerCountScreen() {}
-
 void PlayerCountScreen::init() {
     // ── Screen ────────────────────────────────────────────────────────────
     m_screen = lv_obj_create(nullptr);
@@ -84,24 +68,34 @@ void PlayerCountScreen::init() {
     lv_obj_set_style_border_width(m_screen, 0, 0);
     lv_obj_set_style_pad_all(m_screen, 0, 0);
 
-    // ── Game name (Montserrat 24, centered, top) ───────────────────────────
-    m_name_label = lv_label_create(m_screen);
+    // ── Inverted header bar (black background, full width) ────────────────
+    m_header = lv_obj_create(m_screen);
+    lv_obj_set_size(m_header, 400, 54);
+    lv_obj_set_pos(m_header, 0, 0);
+    lv_obj_set_style_bg_color(m_header, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(m_header, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(m_header, 0, 0);
+    lv_obj_set_style_pad_all(m_header, 0, 0);
+    lv_obj_set_style_radius(m_header, 0, 0);
+
+    // ── Game name (white text in black header, centered) ──────────────────
+    m_name_label = lv_label_create(m_header);
     lv_obj_set_width(m_name_label, 340);  // leave room for error icon
     lv_label_set_long_mode(m_name_label, LV_LABEL_LONG_DOT);
     lv_obj_set_style_text_font(m_name_label, &lv_font_builder_sans_semibold_28, 0);
-    lv_obj_set_style_text_color(m_name_label, lv_color_black(), 0);
+    lv_obj_set_style_text_color(m_name_label, lv_color_white(), 0);
     lv_obj_set_style_text_align(m_name_label, LV_TEXT_ALIGN_CENTER, 0);
     lv_label_set_text(m_name_label, "...");
-    lv_obj_align(m_name_label, LV_ALIGN_TOP_MID, 0, 10);
+    lv_obj_align(m_name_label, LV_ALIGN_CENTER, 0, 0);
 
-    // ── Error icon (top-right corner, hidden by default) ──────────────────
-    m_error_icon = lv_obj_create(m_screen);
+    // ── Error icon (top-right, white box on black header) ─────────────────
+    m_error_icon = lv_obj_create(m_header);
     lv_obj_set_size(m_error_icon, 26, 26);
-    lv_obj_align(m_error_icon, LV_ALIGN_TOP_RIGHT, -8, 6);
+    lv_obj_align(m_error_icon, LV_ALIGN_RIGHT_MID, -8, 0);
     lv_obj_set_style_bg_color(m_error_icon, lv_color_white(), 0);
     lv_obj_set_style_bg_opa(m_error_icon, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_color(m_error_icon, lv_color_black(), 0);
-    lv_obj_set_style_border_width(m_error_icon, 2, 0);
+    lv_obj_set_style_border_color(m_error_icon, lv_color_white(), 0);
+    lv_obj_set_style_border_width(m_error_icon, 1, 0);
     lv_obj_set_style_radius(m_error_icon, 0, 0);
     lv_obj_set_style_pad_all(m_error_icon, 0, 0);
     lv_obj_t * excl = lv_label_create(m_error_icon);
@@ -110,9 +104,6 @@ void PlayerCountScreen::init() {
     lv_obj_set_style_text_color(excl, lv_color_black(), 0);
     lv_obj_center(excl);
     lv_obj_add_flag(m_error_icon, LV_OBJ_FLAG_HIDDEN);
-
-    // ── Divider 1 (below name, pushed down for 28px font) ─────────────────
-    m_div1 = makeDivider(m_screen, 54);
 
     // ── Player count (PressStart2P 80px, hero zone center) ────────────────
     m_count_label = lv_label_create(m_screen);
@@ -168,31 +159,31 @@ void PlayerCountScreen::init() {
 
 void PlayerCountScreen::setGameName(const char * name) {
     lv_label_set_text(m_name_label, name);
-    lv_obj_align(m_name_label, LV_ALIGN_TOP_MID, 0, 10);
+    lv_obj_align(m_name_label, LV_ALIGN_CENTER, 0, 0);
 }
 
-void PlayerCountScreen::setCount(int32_t count) {
+void PlayerCountScreen::setCount(int count) {
     char buf[24];
-    fmtNumber(buf, sizeof(buf), count);
+    formatNumber(buf, sizeof(buf), count);
     lv_label_set_text(m_count_label, buf);
     lv_obj_align(m_count_label, LV_ALIGN_TOP_MID, 0, 92);
 }
 
-void PlayerCountScreen::setVisits(int32_t visits) {
+void PlayerCountScreen::setVisits(int visits) {
     char num[20];
-    fmtNumber(num, sizeof(num), visits);
+    formatNumber(num, sizeof(num), visits);
     char buf[32];
     snprintf(buf, sizeof(buf), "%s visits", num);
     lv_label_set_text(m_visits_label, buf);
     lv_obj_align(m_visits_label, LV_ALIGN_TOP_LEFT, 10, 225);
 }
 
-void PlayerCountScreen::setUpvotes(int32_t up, int32_t down) {
+void PlayerCountScreen::setUpvotes(int up, int down) {
     char buf[32];
-    int32_t total = up + down;
+    int total = up + down;
     if (total > 0) {
         char num[16];
-        fmtNumber(num, sizeof(num), up);
+        formatNumber(num, sizeof(num), up);
         int pct = (int)(up * 100 / total);
         snprintf(buf, sizeof(buf), "%s likes (%d%%)", num, pct);
     } else {

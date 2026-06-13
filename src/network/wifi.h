@@ -8,7 +8,7 @@
 
 class Wifi {
 public:
-    Wifi();
+    Wifi() = default;
     ~Wifi();
 
     Wifi(const Wifi &) = delete;
@@ -27,10 +27,10 @@ public:
 private:
     std::string m_ssid;
     std::string m_password;
-    bool m_is_connected;
-    int m_retry_count;
+    bool m_is_connected = false;
+    int m_retry_count = 0;
 
-    SemaphoreHandle_t m_connected_semaphore;
+    SemaphoreHandle_t m_connected_semaphore = xSemaphoreCreateBinary();
 
     friend void wifiEventHandler(void * arg, esp_event_base_t event_base,
                                  int32_t event_id, void * event_data);

@@ -50,11 +50,6 @@ void wifiEventHandler(void * arg, esp_event_base_t event_base,
     }
 }
 
-Wifi::Wifi()
-    : m_is_connected(false)
-    , m_retry_count(0)
-    , m_connected_semaphore(xSemaphoreCreateBinary()) {}
-
 Wifi::~Wifi() {
     vSemaphoreDelete(m_connected_semaphore);
 }

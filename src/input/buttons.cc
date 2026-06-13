@@ -59,9 +59,6 @@ static void IRAM_ATTR buttonIsrHandler(void * arg) {
     }
 }
 
-Buttons::Buttons() : m_event_queue(nullptr) {}
-
-Buttons::~Buttons() {}
 
 void Buttons::init(QueueHandle_t event_queue) {
     m_event_queue = event_queue;

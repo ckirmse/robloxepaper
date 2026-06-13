@@ -18,8 +18,8 @@ struct ButtonEvent {
 
 class Buttons {
 public:
-    Buttons();
-    ~Buttons();
+    Buttons() = default;
+    ~Buttons() = default;
 
     Buttons(const Buttons &) = delete;
     Buttons & operator=(const Buttons &) = delete;
@@ -27,5 +27,5 @@ public:
     void init(QueueHandle_t event_queue);
 
 private:
-    QueueHandle_t m_event_queue;
+    QueueHandle_t m_event_queue = nullptr;
 };

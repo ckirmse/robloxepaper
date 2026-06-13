@@ -17,9 +17,6 @@ static inline int readPin(int pin) {
     return gpio_get_level((gpio_num_t)pin);
 }
 
-Epaper::Epaper() : m_initialized(false) {}
-
-Epaper::~Epaper() {}
 
 void Epaper::powerOn() {
     setPin(EPD_PIN_PWR_SYSTEM, 1);
