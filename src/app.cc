@@ -1,0 +1,135 @@
+#include "app.h"
+
+#include <time.h>
+#include <stdio.h>
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_sleep.h"
+#include "driver/gpio.h"
+
+#include "log.h"
+
+static const char * TAG = "APP";
+
+// US Pacific (PST=UTC-8 with PDT daylight saving)
+static constexpr const char * TZ_PACIFIC = "PST8PDT,M3.2.0,M11.1.0";
+
+const int App::POLL_INTERVALS[App::POLL_INTERVAL_COUNT] = {60, 120, 300, 1800};
+
+App::App()
+    : m_lvgl_display(m_epaper)
+    , m_poll_interval_idx(0) {
+    m_http_result_queue = xQueueCreate(1, sizeof(HttpResult));
+    m_button_queue = xQueueCreate(8, sizeof(ButtonEvent));
+}
+
+App::~App() {
+    vQueueDelete(m_http_result_queue);
+    vQueueDelete(m_button_queue);
+}
+
+void App::init() {
+    lprintf(TAG, "Initializing app");
+
+    m_epaper.init();
+    m_lvgl_display.init();
+    m_screen.init();
+
+    m_wifi.init(CONFIG_WIFI_SSID, CONFIG_WIFI_PASSWORD);
+
+    m_http_poller.init(m_wifi, m_http_result_queue);
+    m_http_poller.setPollIntervalSec(POLL_INTERVALS[m_poll_interval_idx]);
+    m_http_poller.start();
+
+    m_buttons.init(m_button_queue);
+
+    setenv("TZ", TZ_PACIFIC, 1);
+    tzset();
+
+    lprintf(TAG, "App initialized, poll interval %ds", POLL_INTERVALS[m_poll_interval_idx]);
+}
+
+void App::poll() {
+    ButtonEvent btn_event;
+    while (xQueueReceive(m_button_queue, &btn_event, 0) == pdTRUE) {
+        handleButton(btn_event);
+    }
+
+    HttpResult http_result;
+    while (xQueueReceive(m_http_result_queue, &http_result, 0) == pdTRUE) {
+        handleHttpResult(http_result);
+    }
+
+    m_lvgl_display.tick();
+}
+
+void App::handleButton(const ButtonEvent & event) {
+    switch (event.id) {
+    case ButtonId::HOME:
+        lprintf(TAG, "HOME pressed — forcing fetch");
+        m_http_poller.triggerNow();
+        break;
+
+    case ButtonId::OK:
+        lprintf(TAG, "OK pressed — requesting full e-paper refresh");
+        m_lvgl_display.requestFullRefresh();
+        break;
+
+    case ButtonId::UP: {
+        if (m_poll_interval_idx < POLL_INTERVAL_COUNT - 1) {
+            m_poll_interval_idx++;
+        }
+        int interval = POLL_INTERVALS[m_poll_interval_idx];
+        m_http_poller.setPollIntervalSec(interval);
+        lprintf(TAG, "UP pressed — poll interval → %ds", interval);
+        break;
+    }
+
+    case ButtonId::DOWN: {
+        if (m_poll_interval_idx > 0) {
+            m_poll_interval_idx--;
+        }
+        int interval = POLL_INTERVALS[m_poll_interval_idx];
+        m_http_poller.setPollIntervalSec(interval);
+        lprintf(TAG, "DOWN pressed — poll interval → %ds", interval);
+        break;
+    }
+
+    case ButtonId::EXIT:
+        lprintf(TAG, "EXIT pressed — entering deep sleep");
+        esp_sleep_enable_ext0_wakeup(GPIO_NUM_2, 0);
+        esp_deep_sleep_start();
+        break;
+
+    default:
+        break;
+    }
+}
+
+void App::handleHttpResult(const HttpResult & result) {
+    m_screen.setError(!result.success);
+
+    if (!result.success) {
+        eprintf(TAG, "HTTP fetch failed");
+        return;
+    }
+
+    lprintf(TAG, "Got player count: %ld, visits: %ld",
+            (long)result.player_count, (long)result.visits);
+
+    char fetch_time[8] = "00:00";
+    time_t now_ts = time(nullptr);
+    if (now_ts > 1000000) {  // SNTP has synced (epoch > year 1970+11days)
+        struct tm now_tm = {};
+        localtime_r(&now_ts, &now_tm);
+        strftime(fetch_time, sizeof(fetch_time), "%H:%M", &now_tm);
+    }
+
+    m_screen.setGameName(result.game_name);
+    m_screen.setCount(result.player_count);
+    m_screen.setVisits(result.visits);
+    m_screen.setUpvotes(result.up_votes, result.down_votes);
+    m_screen.setGameUpdated(result.game_updated);
+    m_screen.setFetchTime(fetch_time);
+}

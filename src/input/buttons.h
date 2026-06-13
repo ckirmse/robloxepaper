@@ -1,0 +1,31 @@
+#pragma once
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
+#include "driver/gpio.h"
+
+enum class ButtonId {
+    HOME = 0,
+    EXIT = 1,
+    UP = 2,
+    DOWN = 3,
+    OK = 4,
+};
+
+struct ButtonEvent {
+    ButtonId id;
+};
+
+class Buttons {
+public:
+    Buttons();
+    ~Buttons();
+
+    Buttons(const Buttons &) = delete;
+    Buttons & operator=(const Buttons &) = delete;
+
+    void init(QueueHandle_t event_queue);
+
+private:
+    QueueHandle_t m_event_queue;
+};

@@ -1,0 +1,15 @@
+menu "Epaper App Config"
+
+config WIFI_SSID
+    string "WiFi SSID"
+    default "mywifi"
+    help
+        SSID (network name) to connect to.
+
+config WIFI_PASSWORD
+    string "WiFi Password"
+    default ""
+    help
+        WiFi password (WPA/WPA2).
+
+endmenu
