@@ -135,3 +135,6 @@ Follows conventions from `~/cic`:
 - Delete copy/assign in all classes
 - `.cc` extension for implementation files
 - `using namespace std` in `.cc` files only
+- Never put more than one statement on one line
+- Always put braces around bodies of `if`, `else`, `for`, and `while` statements
+- Use `PRId32`/`PRIu32` in printf format strings for `int32_t`/`uint32_t` values

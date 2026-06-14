@@ -76,12 +76,18 @@ static bool doGet(const char * url, std::vector<char> & out_body) {
 // Extract integer after key (e.g. "\"playing\":") using strstr + strtol.
 static bool extractInt(const char * body, const char * key, int & out) {
     const char * p = strstr(body, key);
-    if (!p) return false;
+    if (!p) {
+        return false;
+    }
     p += strlen(key);
-    while (*p == ' ' || *p == '\t') p++;
+    while (*p == ' ' || *p == '\t') {
+        p++;
+    }
     char * end = nullptr;
     long val = strtol(p, &end, 10);
-    if (end == p) return false;
+    if (end == p) {
+        return false;
+    }
     out = (int32_t)val;
     return true;
 }
@@ -90,10 +96,14 @@ static bool extractInt(const char * body, const char * key, int & out) {
 // Copies into buf, stripping non-printable ASCII, '[', and ']', then trims spaces.
 static bool extractString(const char * body, const char * key, char * buf, size_t buf_size) {
     const char * p = strstr(body, key);
-    if (!p) return false;
+    if (!p) {
+        return false;
+    }
     p += strlen(key);
     // skip opening quote
-    if (*p != '"') return false;
+    if (*p != '"') {
+        return false;
+    }
     p++;
 
     size_t out_i = 0;
@@ -108,12 +118,18 @@ static bool extractString(const char * body, const char * key, char * buf, size_
 
     // trim leading spaces
     char * start = buf;
-    while (*start == ' ') start++;
-    if (start != buf) memmove(buf, start, strlen(start) + 1);
+    while (*start == ' ') {
+        start++;
+    }
+    if (start != buf) {
+        memmove(buf, start, strlen(start) + 1);
+    }
 
     // trim trailing spaces
     int len = (int)strlen(buf);
-    while (len > 0 && buf[len - 1] == ' ') buf[--len] = '\0';
+    while (len > 0 && buf[len - 1] == ' ') {
+        buf[--len] = '\0';
+    }
 
     return true;
 }
@@ -171,14 +187,18 @@ void HttpPoller::run() {
         while (waited_ms < m_poll_interval_sec * 1000) {
             vTaskDelay(pdMS_TO_TICKS(100));
             waited_ms += 100;
-            if (m_force_fetch) break;
+            if (m_force_fetch) {
+                break;
+            }
         }
     }
 }
 
 bool HttpPoller::fetchGames(HttpResult & result) {
     std::vector<char> body;
-    if (!doGet(GAMES_URL, body)) return false;
+    if (!doGet(GAMES_URL, body)) {
+        return false;
+    }
 
     const char * data = body.data();
 
@@ -204,7 +224,9 @@ bool HttpPoller::fetchGames(HttpResult & result) {
 
 bool HttpPoller::fetchVotes(HttpResult & result) {
     std::vector<char> body;
-    if (!doGet(VOTES_URL, body)) return false;
+    if (!doGet(VOTES_URL, body)) {
+        return false;
+    }
 
     const char * data = body.data();
     bool ok = true;
