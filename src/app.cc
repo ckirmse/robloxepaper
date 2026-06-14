@@ -124,7 +124,7 @@ void App::handleHttpResult(const HttpResult & result) {
     if (now_ts > 1000000) {  // SNTP has synced (epoch > year 1970+11days)
         struct tm now_tm = {};
         localtime_r(&now_ts, &now_tm);
-        strftime(fetch_time, sizeof(fetch_time), "%I:%M %p", &now_tm);
+        strftime(fetch_time, sizeof(fetch_time), "%l:%M %p", &now_tm);
     }
 
     m_screen.setGameName(result.game_name);

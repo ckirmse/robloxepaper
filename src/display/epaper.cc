@@ -133,7 +133,6 @@ void Epaper::initFull() {
     writeData(0x03);
     setAddress(0, 0, EPD_WIDTH - 1, EPD_HEIGHT - 1);
     setCursor(0, 0);
-    waitBusy();
 }
 
 void Epaper::initFast() {
@@ -156,7 +155,6 @@ void Epaper::initFast() {
     writeData(0x03);
     setAddress(0, 0, EPD_WIDTH - 1, EPD_HEIGHT - 1);
     setCursor(0, 0);
-    waitBusy();
 }
 
 void Epaper::triggerFullUpdate() {

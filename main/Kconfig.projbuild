@@ -1,4 +1,4 @@
-menu "Epaper App Config"
+menu "Roblox Epaper Wifi Config"
 
 config WIFI_SSID
     string "WiFi SSID"
