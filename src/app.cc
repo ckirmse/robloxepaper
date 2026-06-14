@@ -119,12 +119,12 @@ void App::handleHttpResult(const HttpResult & result) {
     lprintf(TAG, "Got player count: %d, visits: %d",
             result.player_count, result.visits);
 
-    char fetch_time[8] = "00:00";
+    char fetch_time[12] = "12:00 AM";
     time_t now_ts = time(nullptr);
     if (now_ts > 1000000) {  // SNTP has synced (epoch > year 1970+11days)
         struct tm now_tm = {};
         localtime_r(&now_ts, &now_tm);
-        strftime(fetch_time, sizeof(fetch_time), "%H:%M", &now_tm);
+        strftime(fetch_time, sizeof(fetch_time), "%I:%M %p", &now_tm);
     }
 
     m_screen.setGameName(result.game_name);

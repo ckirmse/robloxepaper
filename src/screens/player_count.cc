@@ -187,7 +187,7 @@ void PlayerCountScreen::setUpvotes(int up, int down) {
         int pct = (int)(up * 100 / total);
         snprintf(buf, sizeof(buf), "%s likes (%d%%)", num, pct);
     } else {
-        snprintf(buf, sizeof(buf), "-- up");
+        snprintf(buf, sizeof(buf), "-- likes (--%%)");
     }
     lv_label_set_text(m_upvotes_label, buf);
     lv_obj_align(m_upvotes_label, LV_ALIGN_TOP_RIGHT, -10, 225);
@@ -204,7 +204,7 @@ void PlayerCountScreen::setGameUpdated(const char * date) {
 
 void PlayerCountScreen::setFetchTime(const char * hhmm) {
     char buf[32];
-    snprintf(buf, sizeof(buf), "As of %s PDT", hhmm);
+    snprintf(buf, sizeof(buf), "as of %s", hhmm);
     lv_label_set_text(m_fetch_time_label, buf);
     lv_obj_align(m_fetch_time_label, LV_ALIGN_TOP_RIGHT, -10, 267);
 }

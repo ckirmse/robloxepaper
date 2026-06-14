@@ -19,7 +19,7 @@ public:
     void setVisits(int visits);
     void setUpvotes(int up, int down);
     void setGameUpdated(const char * date);  // "YYYY-MM-DD"
-    void setFetchTime(const char * hhmm);   // "HH:MM"
+    void setFetchTime(const char * hhmm);   // "HH:MM AM/PM"
     void setError(bool has_error);
 
 private:
