@@ -1,6 +1,9 @@
 #include "display/epaper.h"
 
+#include <string.h>
+
 #include "driver/gpio.h"
+#include "esp_heap_caps.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_rom_sys.h"
@@ -56,6 +59,7 @@ void Epaper::gpioInit() {
 void Epaper::init() {
     gpioInit();
     powerOn();
+    m_prev_frame = static_cast<uint8_t *>(heap_caps_malloc(EPD_BUF_SIZE, MALLOC_CAP_SPIRAM));
     m_initialized = true;
     lprintf(TAG, "GPIO initialized, power on");
 }
@@ -178,11 +182,19 @@ void Epaper::writeBuffer(const uint8_t * buf) {
     }
 }
 
+void Epaper::writePrevBuffer(const uint8_t * buf) {
+    writeCmd(0x26);
+    for (int i = 0; i < EPD_BUF_SIZE; i++) {
+        writeData(buf[i]);
+    }
+}
+
 void Epaper::fullRefresh(const uint8_t * buf) {
     lprintf(TAG, "Full refresh starting");
     initFull();
     writeBuffer(buf);
     triggerFullUpdate();
+    memcpy(m_prev_frame, buf, EPD_BUF_SIZE);
     sleep();
     lprintf(TAG, "Full refresh done");
 }
@@ -190,14 +202,17 @@ void Epaper::fullRefresh(const uint8_t * buf) {
 void Epaper::fastRefresh(const uint8_t * buf) {
     lprintf(TAG, "Fast refresh starting");
     initFast();
+    writePrevBuffer(m_prev_frame);
+    setCursor(0, 0);
     writeBuffer(buf);
     triggerFastUpdate();
+    memcpy(m_prev_frame, buf, EPD_BUF_SIZE);
     sleep();
     lprintf(TAG, "Fast refresh done");
 }
 
 void Epaper::sleep() {
     writeCmd(0x10);
-    writeData(0x01);
+    writeData(0x03);  // sleep mode 2: no RAM retention, <1µA
     vTaskDelay(pdMS_TO_TICKS(50));
 }

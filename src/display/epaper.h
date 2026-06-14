@@ -36,6 +36,7 @@ public:
 
 private:
     bool m_initialized = false;
+    uint8_t * m_prev_frame = nullptr;
 
     void powerOn();
     void gpioInit();
@@ -51,4 +52,5 @@ private:
     void triggerFullUpdate();
     void triggerFastUpdate();
     void writeBuffer(const uint8_t * buf);
+    void writePrevBuffer(const uint8_t * buf);
 };
