@@ -76,7 +76,6 @@ void App::cycleView() {
         m_active_view = ViewId::STATS;
         lv_screen_load(m_stats_screen.lvglScreen());
     }
-    m_lvgl_display.requestFullRefresh();
 }
 
 void App::handleButton(const ButtonEvent & event) {
