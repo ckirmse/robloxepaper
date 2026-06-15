@@ -6,7 +6,9 @@ idf_component_register(
         "network/wifi.cc"
         "network/http_poller.cc"
         "input/buttons.cc"
+        "history/player_history.cc"
         "screens/player_count.cc"
+        "screens/graph_screen.cc"
         "fonts/lv_font_press_start_2p_80.c"
         "fonts/lv_font_builder_sans_semibold_20.c"
         "fonts/lv_font_builder_sans_semibold_28.c"
@@ -25,6 +27,7 @@ idf_component_register(
         freertos
         esp_system
         esp_hw_support
+        nvs_flash
 )
 
 # Font files need "lvgl.h" (not "lvgl/lvgl.h") since the component root is the include dir

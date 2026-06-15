@@ -9,6 +9,13 @@
 #include "network/http_poller.h"
 #include "input/buttons.h"
 #include "screens/player_count.h"
+#include "screens/graph_screen.h"
+#include "history/player_history.h"
+
+enum class ViewId {
+    STATS = 0,
+    GRAPH = 1,
+};
 
 class App {
 public:
@@ -30,13 +37,17 @@ private:
     Wifi m_wifi;
     HttpPoller m_http_poller;
     Buttons m_buttons;
-    PlayerCountScreen m_screen;
+    PlayerCountScreen m_stats_screen;
+    GraphScreen m_graph_screen;
+    PlayerHistory m_history;
 
     QueueHandle_t m_http_result_queue = nullptr;
     QueueHandle_t m_button_queue = nullptr;
 
-    int m_poll_interval_idx = 0;
+    int m_poll_interval_index = 0;
+    ViewId m_active_view = ViewId::STATS;
 
     void handleButton(const ButtonEvent & event);
     void handleHttpResult(const HttpResult & result);
+    void cycleView();
 };

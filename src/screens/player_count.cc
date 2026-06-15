@@ -153,7 +153,6 @@ void PlayerCountScreen::init() {
     lv_label_set_text(m_fetch_time_label, "Fetched: --");
     lv_obj_align(m_fetch_time_label, LV_ALIGN_TOP_RIGHT, -10, 267);
 
-    lv_screen_load(m_screen);
     lprintf(TAG, "Screen initialized");
 }
 

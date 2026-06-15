@@ -33,12 +33,17 @@ void App::init() {
 
     m_epaper.init();
     m_lvgl_display.init();
-    m_screen.init();
+    m_stats_screen.init();
+    m_graph_screen.init();
+
+    m_history.load();
+
+    lv_screen_load(m_stats_screen.lvglScreen());
 
     m_wifi.init(CONFIG_WIFI_SSID, CONFIG_WIFI_PASSWORD);
 
     m_http_poller.init(m_wifi, m_http_result_queue);
-    m_http_poller.setPollIntervalSec(POLL_INTERVALS[m_poll_interval_idx]);
+    m_http_poller.setPollIntervalSec(POLL_INTERVALS[m_poll_interval_index]);
     m_http_poller.start();
 
     m_buttons.init(m_button_queue);
@@ -46,7 +51,7 @@ void App::init() {
     setenv("TZ", TZ_PACIFIC, 1);
     tzset();
 
-    lprintf(TAG, "App initialized, poll interval %ds", POLL_INTERVALS[m_poll_interval_idx]);
+    lprintf(TAG, "App initialized, poll interval %ds", POLL_INTERVALS[m_poll_interval_index]);
 }
 
 void App::poll() {
@@ -63,6 +68,17 @@ void App::poll() {
     m_lvgl_display.tick();
 }
 
+void App::cycleView() {
+    if (m_active_view == ViewId::STATS) {
+        m_active_view = ViewId::GRAPH;
+        lv_screen_load(m_graph_screen.lvglScreen());
+    } else {
+        m_active_view = ViewId::STATS;
+        lv_screen_load(m_stats_screen.lvglScreen());
+    }
+    m_lvgl_display.requestFullRefresh();
+}
+
 void App::handleButton(const ButtonEvent & event) {
     switch (event.id) {
     case ButtonId::HOME:
@@ -71,25 +87,25 @@ void App::handleButton(const ButtonEvent & event) {
         break;
 
     case ButtonId::OK:
-        lprintf(TAG, "OK pressed — requesting full e-paper refresh");
-        m_lvgl_display.requestFullRefresh();
+        lprintf(TAG, "OK pressed — cycling view");
+        cycleView();
         break;
 
     case ButtonId::UP: {
-        if (m_poll_interval_idx < POLL_INTERVAL_COUNT - 1) {
-            m_poll_interval_idx++;
+        if (m_poll_interval_index < POLL_INTERVAL_COUNT - 1) {
+            m_poll_interval_index++;
         }
-        int interval = POLL_INTERVALS[m_poll_interval_idx];
+        int interval = POLL_INTERVALS[m_poll_interval_index];
         m_http_poller.setPollIntervalSec(interval);
         lprintf(TAG, "UP pressed — poll interval → %ds", interval);
         break;
     }
 
     case ButtonId::DOWN: {
-        if (m_poll_interval_idx > 0) {
-            m_poll_interval_idx--;
+        if (m_poll_interval_index > 0) {
+            m_poll_interval_index--;
         }
-        int interval = POLL_INTERVALS[m_poll_interval_idx];
+        int interval = POLL_INTERVALS[m_poll_interval_index];
         m_http_poller.setPollIntervalSec(interval);
         lprintf(TAG, "DOWN pressed — poll interval → %ds", interval);
         break;
@@ -97,8 +113,10 @@ void App::handleButton(const ButtonEvent & event) {
 
     case ButtonId::EXIT:
         lprintf(TAG, "EXIT pressed — showing stale indicator then sleeping");
-        m_screen.setError(true);
-        m_lvgl_display.tick();  // flush error icon to e-paper before sleep
+        m_active_view = ViewId::STATS;
+        lv_screen_load(m_stats_screen.lvglScreen());
+        m_stats_screen.setError(true);
+        m_lvgl_display.tick();
         esp_sleep_enable_ext0_wakeup(GPIO_NUM_2, 0);
         esp_deep_sleep_start();
         break;
@@ -109,7 +127,8 @@ void App::handleButton(const ButtonEvent & event) {
 }
 
 void App::handleHttpResult(const HttpResult & result) {
-    m_screen.setError(!result.success);
+    m_stats_screen.setError(!result.success);
+    m_graph_screen.setError(!result.success);
 
     if (!result.success) {
         eprintf(TAG, "HTTP fetch failed");
@@ -127,10 +146,15 @@ void App::handleHttpResult(const HttpResult & result) {
         strftime(fetch_time, sizeof(fetch_time), "%l:%M %p", &now_tm);
     }
 
-    m_screen.setGameName(result.game_name);
-    m_screen.setCount(result.player_count);
-    m_screen.setVisits(result.visits);
-    m_screen.setUpvotes(result.up_votes, result.down_votes);
-    m_screen.setGameUpdated(result.game_updated);
-    m_screen.setFetchTime(fetch_time);
+    m_stats_screen.setGameName(result.game_name);
+    m_stats_screen.setCount(result.player_count);
+    m_stats_screen.setVisits(result.visits);
+    m_stats_screen.setUpvotes(result.up_votes, result.down_votes);
+    m_stats_screen.setGameUpdated(result.game_updated);
+    m_stats_screen.setFetchTime(fetch_time);
+
+    m_history.push(result.player_count, (int32_t)now_ts);
+    m_graph_screen.setGameName(result.game_name);
+    m_graph_screen.setCurrentCount(result.player_count);
+    m_graph_screen.setHistory(m_history);
 }

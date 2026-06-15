@@ -14,6 +14,8 @@ public:
 
     void init();
 
+    lv_obj_t * lvglScreen() const { return m_screen; }
+
     void setGameName(const char * name);
     void setCount(int count);
     void setVisits(int visits);
