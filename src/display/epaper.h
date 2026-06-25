@@ -32,6 +32,9 @@ public:
     // Fast refresh (~1s) — use for routine updates after at least one fullRefresh
     void fastRefresh(const uint8_t * buf);
 
+    // Fast refresh of a sub-region only; x coords are byte-aligned internally
+    void fastRefreshPartial(const uint8_t * buf, int32_t x1, int32_t y1, int32_t x2, int32_t y2);
+
     void sleep();
 
 private:

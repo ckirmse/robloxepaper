@@ -211,6 +211,24 @@ void Epaper::fastRefresh(const uint8_t * buf) {
     lprintf(TAG, "Fast refresh done");
 }
 
+void Epaper::fastRefreshPartial(const uint8_t * buf,
+                                 int32_t x1, int32_t y1, int32_t x2, int32_t y2) {
+    // Full buffer write is required: sleep mode 2 does not retain RAM, so after
+    // initFast()'s reset the unwritten regions would contain garbage. Fast refresh
+    // naturally only flickers pixels where old != new, so visually only the dirty
+    // region updates.
+    lprintf(TAG, "Fast partial refresh [%" PRId32 ",%" PRId32 "]-[%" PRId32 ",%" PRId32 "]",
+            x1, y1, x2, y2);
+    initFast();
+    writePrevBuffer(m_prev_frame);
+    setCursor(0, 0);
+    writeBuffer(buf);
+    triggerFastUpdate();
+    memcpy(m_prev_frame, buf, EPD_BUF_SIZE);
+    sleep();
+    lprintf(TAG, "Fast partial refresh done");
+}
+
 void Epaper::sleep() {
     writeCmd(0x10);
     writeData(0x03);  // sleep mode 2: no RAM retention, <1µA

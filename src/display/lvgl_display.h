@@ -28,6 +28,8 @@ private:
     uint8_t * m_lv_buf = nullptr;   // 240KB RGB565 draw buffer in PSRAM
     uint8_t * m_epaper_buf = nullptr; // 15KB 1-bit epaper buffer, heap-allocated
     bool m_first_refresh = true;
+    lv_area_t m_dirty_area = {};
+    bool m_has_dirty = false;
 
     friend void lvglFlushCallback(lv_display_t * disp, const lv_area_t * area, uint8_t * px_map);
 };

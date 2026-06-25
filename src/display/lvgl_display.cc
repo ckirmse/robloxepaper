@@ -35,13 +35,35 @@ void lvglFlushCallback(lv_display_t * disp, const lv_area_t * area, uint8_t * px
         }
     }
 
+    // Accumulate the union of all dirty regions in this tick
+    if (!self->m_has_dirty) {
+        self->m_dirty_area = *area;
+        self->m_has_dirty = true;
+    } else {
+        if (area->x1 < self->m_dirty_area.x1) {
+            self->m_dirty_area.x1 = area->x1;
+        }
+        if (area->y1 < self->m_dirty_area.y1) {
+            self->m_dirty_area.y1 = area->y1;
+        }
+        if (area->x2 > self->m_dirty_area.x2) {
+            self->m_dirty_area.x2 = area->x2;
+        }
+        if (area->y2 > self->m_dirty_area.y2) {
+            self->m_dirty_area.y2 = area->y2;
+        }
+    }
+
     if (lv_display_flush_is_last(disp)) {
         if (self->m_first_refresh) {
             self->m_first_refresh = false;
             self->m_epaper.fullRefresh(self->m_epaper_buf);
         } else {
-            self->m_epaper.fastRefresh(self->m_epaper_buf);
+            self->m_epaper.fastRefreshPartial(self->m_epaper_buf,
+                self->m_dirty_area.x1, self->m_dirty_area.y1,
+                self->m_dirty_area.x2, self->m_dirty_area.y2);
         }
+        self->m_has_dirty = false;
     }
 
     lv_display_flush_ready(disp);
@@ -82,7 +104,7 @@ void LvglDisplay::init() {
     lv_display_set_user_data(m_lv_display, this);
     lv_display_set_flush_cb(m_lv_display, lvglFlushCallback);
     lv_display_set_buffers(m_lv_display, m_lv_buf, nullptr, lv_buf_size,
-                           LV_DISPLAY_RENDER_MODE_FULL);
+                           LV_DISPLAY_RENDER_MODE_PARTIAL);
 
     lprintf(TAG, "LVGL initialized");
 }

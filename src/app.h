@@ -46,6 +46,8 @@ private:
 
     int m_poll_interval_index = 0;
     ViewId m_active_view = ViewId::STATS;
+    HttpResult m_last_result = {};
+    char m_last_fetch_time[12] = {};
 
     void handleButton(const ButtonEvent & event);
     void handleHttpResult(const HttpResult & result);

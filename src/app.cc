@@ -2,6 +2,7 @@
 
 #include <time.h>
 #include <stdio.h>
+#include <string.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -21,6 +22,7 @@ App::App() :
     m_lvgl_display(m_epaper) {
     m_http_result_queue = xQueueCreate(1, sizeof(HttpResult));
     m_button_queue = xQueueCreate(8, sizeof(ButtonEvent));
+    m_last_result.success = true;  // first fetch sets error icon only on actual failure
 }
 
 App::~App() {
@@ -126,8 +128,10 @@ void App::handleButton(const ButtonEvent & event) {
 }
 
 void App::handleHttpResult(const HttpResult & result) {
-    m_stats_screen.setError(!result.success);
-    m_graph_screen.setError(!result.success);
+    if (result.success != m_last_result.success) {
+        m_stats_screen.setError(!result.success);
+        m_graph_screen.setError(!result.success);
+    }
 
     if (!result.success) {
         eprintf(TAG, "HTTP fetch failed");
@@ -145,15 +149,34 @@ void App::handleHttpResult(const HttpResult & result) {
         strftime(fetch_time, sizeof(fetch_time), "%l:%M %p", &now_tm);
     }
 
-    m_stats_screen.setGameName(result.game_name);
-    m_stats_screen.setCount(result.player_count);
-    m_stats_screen.setVisits(result.visits);
-    m_stats_screen.setUpvotes(result.up_votes, result.down_votes);
-    m_stats_screen.setGameUpdated(result.game_updated);
-    m_stats_screen.setFetchTime(fetch_time);
+    if (strcmp(result.game_name, m_last_result.game_name) != 0) {
+        m_stats_screen.setGameName(result.game_name);
+    }
+    if (result.player_count != m_last_result.player_count) {
+        m_stats_screen.setCount(result.player_count);
+    }
+    if (result.visits != m_last_result.visits) {
+        m_stats_screen.setVisits(result.visits);
+    }
+    if (result.up_votes != m_last_result.up_votes || result.down_votes != m_last_result.down_votes) {
+        m_stats_screen.setUpvotes(result.up_votes, result.down_votes);
+    }
+    if (strcmp(result.game_updated, m_last_result.game_updated) != 0) {
+        m_stats_screen.setGameUpdated(result.game_updated);
+    }
+    if (strcmp(fetch_time, m_last_fetch_time) != 0) {
+        m_stats_screen.setFetchTime(fetch_time);
+        strcpy(m_last_fetch_time, fetch_time);
+    }
 
     m_history.push(result.player_count, (int32_t)now_ts);
-    m_graph_screen.setGameName(result.game_name);
-    m_graph_screen.setCurrentCount(result.player_count);
+    if (strcmp(result.game_name, m_last_result.game_name) != 0) {
+        m_graph_screen.setGameName(result.game_name);
+    }
+    if (result.player_count != m_last_result.player_count) {
+        m_graph_screen.setCurrentCount(result.player_count);
+    }
     m_graph_screen.setHistory(m_history);
+
+    m_last_result = result;
 }
