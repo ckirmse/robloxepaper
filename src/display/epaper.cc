@@ -22,8 +22,8 @@ static inline int readPin(int pin) {
 
 
 void Epaper::powerOn() {
-    setPin(EPD_PIN_PWR_SYSTEM, 1);
-    vTaskDelay(pdMS_TO_TICKS(10));
+    // GPIO 41 drives the onboard power-indicator LED; keep it off
+    setPin(EPD_PIN_PWR_SYSTEM, 0);
     setPin(EPD_PIN_PWR_DISPLAY, 1);
     vTaskDelay(pdMS_TO_TICKS(10));
 }
