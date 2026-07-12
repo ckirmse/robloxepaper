@@ -135,6 +135,7 @@ void App::handleHttpResult(const HttpResult & result) {
 
     if (!result.success) {
         eprintf(TAG, "HTTP fetch failed");
+        m_last_result.success = false;
         return;
     }
 
