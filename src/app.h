@@ -43,6 +43,7 @@ private:
 
     QueueHandle_t m_http_result_queue = nullptr;
     QueueHandle_t m_button_queue = nullptr;
+    QueueSetHandle_t m_queue_set = nullptr;
 
     int m_poll_interval_index = 0;
     ViewId m_active_view = ViewId::STATS;

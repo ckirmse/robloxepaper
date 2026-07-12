@@ -26,6 +26,10 @@ public:
 
     void init(QueueHandle_t event_queue);
 
+    // Start the timer that re-enables button interrupts after release; call
+    // after receiving a button event (level ISRs disable themselves on fire)
+    void rearm();
+
 private:
     QueueHandle_t m_event_queue = nullptr;
 };

@@ -7,6 +7,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "esp_sleep.h"
+#include "esp_pm.h"
 #include "driver/gpio.h"
 
 #include "log.h"
@@ -22,16 +23,27 @@ App::App() :
     m_lvgl_display(m_epaper) {
     m_http_result_queue = xQueueCreate(1, sizeof(HttpResult));
     m_button_queue = xQueueCreate(8, sizeof(ButtonEvent));
+    m_queue_set = xQueueCreateSet(9);  // button queue (8) + http result queue (1)
+    xQueueAddToSet(m_http_result_queue, m_queue_set);
+    xQueueAddToSet(m_button_queue, m_queue_set);
     m_last_result.success = true;  // first fetch sets error icon only on actual failure
 }
 
 App::~App() {
+    vQueueDelete(m_queue_set);
     vQueueDelete(m_http_result_queue);
     vQueueDelete(m_button_queue);
 }
 
 void App::init() {
     lprintf(TAG, "Initializing app");
+
+    esp_pm_config_t pm_config = {};
+    pm_config.max_freq_mhz = 80;
+    pm_config.min_freq_mhz = 40;
+    pm_config.light_sleep_enable = true;
+    ESP_ERROR_CHECK(esp_pm_configure(&pm_config));
+    lprintf(TAG, "Power management enabled: DFS 40-80MHz, auto light sleep");
 
     m_epaper.init();
     m_lvgl_display.init();
@@ -57,17 +69,21 @@ void App::init() {
 }
 
 void App::poll() {
-    ButtonEvent btn_event;
-    while (xQueueReceive(m_button_queue, &btn_event, 0) == pdTRUE) {
-        handleButton(btn_event);
-    }
+    uint32_t idle_ms = m_lvgl_display.tick();
 
-    HttpResult http_result;
-    while (xQueueReceive(m_http_result_queue, &http_result, 0) == pdTRUE) {
-        handleHttpResult(http_result);
+    QueueSetMemberHandle_t member = xQueueSelectFromSet(m_queue_set, pdMS_TO_TICKS(idle_ms));
+    if (member == m_button_queue) {
+        ButtonEvent btn_event;
+        if (xQueueReceive(m_button_queue, &btn_event, 0) == pdTRUE) {
+            m_buttons.rearm();
+            handleButton(btn_event);
+        }
+    } else if (member == m_http_result_queue) {
+        HttpResult http_result;
+        if (xQueueReceive(m_http_result_queue, &http_result, 0) == pdTRUE) {
+            handleHttpResult(http_result);
+        }
     }
-
-    m_lvgl_display.tick();
 }
 
 void App::cycleView() {

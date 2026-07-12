@@ -57,11 +57,23 @@ void Epaper::gpioInit() {
 }
 
 void Epaper::init() {
+    ESP_ERROR_CHECK(esp_pm_lock_create(ESP_PM_CPU_FREQ_MAX, 0, "epd_cpu", &m_cpu_lock));
+    ESP_ERROR_CHECK(esp_pm_lock_create(ESP_PM_NO_LIGHT_SLEEP, 0, "epd_nosleep", &m_sleep_lock));
     gpioInit();
     powerOn();
     m_prev_frame = static_cast<uint8_t *>(heap_caps_malloc(EPD_BUF_SIZE, MALLOC_CAP_SPIRAM));
     m_initialized = true;
     lprintf(TAG, "GPIO initialized, power on");
+}
+
+void Epaper::lockBus() {
+    esp_pm_lock_acquire(m_cpu_lock);
+    esp_pm_lock_acquire(m_sleep_lock);
+}
+
+void Epaper::unlockBus() {
+    esp_pm_lock_release(m_sleep_lock);
+    esp_pm_lock_release(m_cpu_lock);
 }
 
 void Epaper::reset() {
@@ -74,10 +86,15 @@ void Epaper::reset() {
 }
 
 void Epaper::waitBusy() {
-    // BUSY HIGH = chip is processing; BUSY LOW = chip is ready
+    // BUSY HIGH = chip is processing; BUSY LOW = chip is ready.
+    // The controller refresh takes 1-4s, so drop the PM locks and let the CPU
+    // scale down and light-sleep between polls; BUSY is a held level so no
+    // edge can be missed.
+    unlockBus();
     while (readPin(EPD_PIN_BUSY) == 1) {
         vTaskDelay(pdMS_TO_TICKS(10));
     }
+    lockBus();
 }
 
 void Epaper::writeByte(uint8_t byte) {
@@ -191,16 +208,19 @@ void Epaper::writePrevBuffer(const uint8_t * buf) {
 
 void Epaper::fullRefresh(const uint8_t * buf) {
     lprintf(TAG, "Full refresh starting");
+    lockBus();
     initFull();
     writeBuffer(buf);
     triggerFullUpdate();
     memcpy(m_prev_frame, buf, EPD_BUF_SIZE);
     sleep();
+    unlockBus();
     lprintf(TAG, "Full refresh done");
 }
 
 void Epaper::fastRefresh(const uint8_t * buf) {
     lprintf(TAG, "Fast refresh starting");
+    lockBus();
     initFast();
     writePrevBuffer(m_prev_frame);
     setCursor(0, 0);
@@ -208,6 +228,7 @@ void Epaper::fastRefresh(const uint8_t * buf) {
     triggerFastUpdate();
     memcpy(m_prev_frame, buf, EPD_BUF_SIZE);
     sleep();
+    unlockBus();
     lprintf(TAG, "Fast refresh done");
 }
 
@@ -219,6 +240,7 @@ void Epaper::fastRefreshPartial(const uint8_t * buf,
     // region updates.
     lprintf(TAG, "Fast partial refresh [%" PRId32 ",%" PRId32 "]-[%" PRId32 ",%" PRId32 "]",
             x1, y1, x2, y2);
+    lockBus();
     initFast();
     writePrevBuffer(m_prev_frame);
     setCursor(0, 0);
@@ -226,11 +248,14 @@ void Epaper::fastRefreshPartial(const uint8_t * buf,
     triggerFastUpdate();
     memcpy(m_prev_frame, buf, EPD_BUF_SIZE);
     sleep();
+    unlockBus();
     lprintf(TAG, "Fast partial refresh done");
 }
 
 void Epaper::sleep() {
+    lockBus();
     writeCmd(0x10);
     writeData(0x03);  // sleep mode 2: no RAM retention, <1µA
+    unlockBus();
     vTaskDelay(pdMS_TO_TICKS(50));
 }

@@ -27,6 +27,7 @@ idf_component_register(
         freertos
         esp_system
         esp_hw_support
+        esp_pm
         nvs_flash
 )
 

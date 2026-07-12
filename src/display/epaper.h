@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include <stddef.h>
 
+#include "esp_pm.h"
+
 static constexpr int EPD_WIDTH = 400;
 static constexpr int EPD_HEIGHT = 300;
 static constexpr int EPD_BUF_SIZE = EPD_WIDTH * EPD_HEIGHT / 8;  // 15000 bytes
@@ -40,6 +42,13 @@ public:
 private:
     bool m_initialized = false;
     uint8_t * m_prev_frame = nullptr;
+    esp_pm_lock_handle_t m_cpu_lock = nullptr;
+    esp_pm_lock_handle_t m_sleep_lock = nullptr;
+
+    // Bit-bang SPI timing depends on CPU frequency and must not be interrupted
+    // by light sleep, so all pin activity happens under these locks
+    void lockBus();
+    void unlockBus();
 
     void powerOn();
     void gpioInit();

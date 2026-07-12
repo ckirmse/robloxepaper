@@ -109,8 +109,15 @@ void LvglDisplay::init() {
     lprintf(TAG, "LVGL initialized");
 }
 
-void LvglDisplay::tick() {
-    lv_timer_handler();
+uint32_t LvglDisplay::tick() {
+    uint32_t next_ms = lv_timer_handler();
+    if (next_ms < 10) {
+        next_ms = 10;
+    }
+    if (next_ms > 1000) {
+        next_ms = 1000;
+    }
+    return next_ms;
 }
 
 void LvglDisplay::requestFullRefresh() {

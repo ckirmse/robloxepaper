@@ -14,6 +14,11 @@
 static const char * TAG = "WIFI";
 static constexpr int MAX_RETRIES = 10;
 
+// Modem power save: MAX saves the most; fall back to WIFI_PS_MIN_MODEM if the
+// AP drops the connection ("bcn timeout" in logs)
+static constexpr wifi_ps_type_t POWER_SAVE_MODE = WIFI_PS_MAX_MODEM;
+static constexpr int LISTEN_INTERVAL = 3;
+
 void wifiEventHandler(void * arg, esp_event_base_t event_base,
                       int32_t event_id, void * event_data) {
     Wifi * wifi = static_cast<Wifi *>(arg);
@@ -77,10 +82,12 @@ void Wifi::init(const char * ssid, const char * password) {
             sizeof(wifi_cfg.sta.ssid) - 1);
     strncpy(reinterpret_cast<char *>(wifi_cfg.sta.password), m_password.c_str(),
             sizeof(wifi_cfg.sta.password) - 1);
+    wifi_cfg.sta.listen_interval = LISTEN_INTERVAL;
 
     ESP_ERROR_CHECK(esp_wifi_set_mode(WIFI_MODE_STA));
     ESP_ERROR_CHECK(esp_wifi_set_config(WIFI_IF_STA, &wifi_cfg));
     ESP_ERROR_CHECK(esp_wifi_start());
+    ESP_ERROR_CHECK(esp_wifi_set_ps(POWER_SAVE_MODE));
 
     lprintf(TAG, "WiFi initialized, connecting to \"%s\"", m_ssid.c_str());
 }

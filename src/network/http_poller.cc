@@ -10,6 +10,7 @@
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
 #include "esp_netif_sntp.h"
+#include "esp_timer.h"
 
 #include "log.h"
 
@@ -142,6 +143,7 @@ void httpPollerTask(void * arg) {
 void HttpPoller::init(Wifi & wifi, QueueHandle_t result_queue) {
     m_wifi = &wifi;
     m_result_queue = result_queue;
+    m_wake_sem = xSemaphoreCreateBinary();
 }
 
 void HttpPoller::start() {
@@ -150,10 +152,13 @@ void HttpPoller::start() {
 
 void HttpPoller::triggerNow() {
     m_force_fetch = true;
+    xSemaphoreGive(m_wake_sem);
 }
 
 void HttpPoller::setPollIntervalSec(int seconds) {
     m_poll_interval_sec = seconds;
+    // Wake the poller so the wait loop re-evaluates against the new interval
+    xSemaphoreGive(m_wake_sem);
 }
 
 void HttpPoller::run() {
@@ -182,14 +187,18 @@ void HttpPoller::run() {
 
         xQueueOverwrite(m_result_queue, &result);
         m_force_fetch = false;
+        xSemaphoreTake(m_wake_sem, 0);  // clear a wake that arrived mid-fetch
 
-        int waited_ms = 0;
-        while (waited_ms < m_poll_interval_sec * 1000) {
-            vTaskDelay(pdMS_TO_TICKS(100));
-            waited_ms += 100;
-            if (m_force_fetch) {
+        // Sleep until the poll interval elapses, waking early on triggerNow()
+        // or an interval change
+        int64_t wait_start_us = esp_timer_get_time();
+        while (!m_force_fetch) {
+            int64_t elapsed_ms = (esp_timer_get_time() - wait_start_us) / 1000;
+            int64_t remaining_ms = (int64_t)m_poll_interval_sec * 1000 - elapsed_ms;
+            if (remaining_ms <= 0) {
                 break;
             }
+            xSemaphoreTake(m_wake_sem, pdMS_TO_TICKS(remaining_ms));
         }
     }
 }

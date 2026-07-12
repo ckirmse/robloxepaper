@@ -12,7 +12,6 @@ static void run_task(void *) {
     app.init();
     while (true) {
         app.poll();
-        vTaskDelay(pdMS_TO_TICKS(10));
     }
 }
 

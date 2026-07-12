@@ -16,8 +16,10 @@ public:
 
     void init();
 
-    // Call from main loop — handles LVGL timers and triggers e-paper refresh when dirty
-    void tick();
+    // Call from main loop — handles LVGL timers and triggers e-paper refresh when
+    // dirty. Returns ms until the next LVGL timer is due, clamped to [10, 1000],
+    // so the caller can block that long
+    uint32_t tick();
 
     // Force the next e-paper update to use a full (ghosting-clearing) refresh
     void requestFullRefresh();
