@@ -164,22 +164,26 @@ void HttpPoller::setPollIntervalSec(int seconds) {
 void HttpPoller::run() {
     lprintf(TAG, "HTTP poller task started, waiting for WiFi...");
 
-    if (!m_wifi->waitForConnection(60000)) {
-        eprintf(TAG, "WiFi timeout — HTTP poller exiting");
-        vTaskDelete(nullptr);
-        return;
+    while (!m_wifi->waitForConnection(60000)) {
+        eprintf(TAG, "WiFi not connected after 60s, still waiting...");
     }
 
     lprintf(TAG, "WiFi connected, syncing time via SNTP...");
     esp_sntp_config_t sntp_cfg = ESP_NETIF_SNTP_DEFAULT_CONFIG("pool.ntp.org");
     esp_netif_sntp_init(&sntp_cfg);
-    if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(10000)) != ESP_OK) {
-        lprintf(TAG, "SNTP sync timed out — times will show 00:00");
-    } else {
+    if (esp_netif_sntp_sync_wait(pdMS_TO_TICKS(10000)) == ESP_OK) {
+        m_time_synced = true;
         lprintf(TAG, "SNTP synced");
+    } else {
+        lprintf(TAG, "SNTP sync timed out — will retry each poll cycle");
     }
 
     while (true) {
+        if (!m_time_synced && esp_netif_sntp_sync_wait(pdMS_TO_TICKS(2000)) == ESP_OK) {
+            m_time_synced = true;
+            lprintf(TAG, "SNTP synced");
+        }
+
         HttpResult result = {};
 
         result.success = fetchGames(result);

@@ -40,6 +40,7 @@ private:
     QueueHandle_t m_result_queue = nullptr;
     int m_poll_interval_sec = 60;
     volatile bool m_force_fetch = false;
+    bool m_time_synced = false;
     SemaphoreHandle_t m_wake_sem = nullptr;  // given on triggerNow() or interval change
 
     friend void httpPollerTask(void * arg);

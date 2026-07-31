@@ -5,6 +5,7 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/semphr.h"
 #include "esp_wifi.h"
+#include "esp_timer.h"
 
 class Wifi {
 public:
@@ -29,9 +30,11 @@ private:
     std::string m_password;
     bool m_is_connected = false;
     int m_retry_count = 0;
+    esp_timer_handle_t m_reconnect_timer = nullptr;
 
     SemaphoreHandle_t m_connected_semaphore = xSemaphoreCreateBinary();
 
+    friend void reconnectTimerCallback(void * arg);
     friend void wifiEventHandler(void * arg, esp_event_base_t event_base,
                                  int32_t event_id, void * event_data);
     void connect();

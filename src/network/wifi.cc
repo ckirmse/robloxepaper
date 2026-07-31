@@ -1,5 +1,6 @@
 #include "network/wifi.h"
 
+#include <cinttypes>
 #include <cstring>
 
 #include "freertos/FreeRTOS.h"
@@ -12,7 +13,11 @@
 #include "log.h"
 
 static const char * TAG = "WIFI";
-static constexpr int MAX_RETRIES = 10;
+
+// Reconnect backoff: 500ms doubling per attempt, capped at 60s. Never give up —
+// the router may come back hours later and we must recover without a reboot.
+static constexpr int64_t RECONNECT_BASE_DELAY_MS = 500;
+static constexpr int64_t RECONNECT_MAX_DELAY_MS = 60 * 1000;
 
 // Modem power save: MAX saves the most; fall back to WIFI_PS_MIN_MODEM if the
 // AP drops the connection ("bcn timeout" in logs)
@@ -30,16 +35,18 @@ void wifiEventHandler(void * arg, esp_event_base_t event_base,
             wifi->connect();
             break;
 
-        case WIFI_EVENT_STA_DISCONNECTED:
+        case WIFI_EVENT_STA_DISCONNECTED: {
             wifi->m_is_connected = false;
-            if (wifi->m_retry_count < MAX_RETRIES) {
-                wifi->m_retry_count++;
-                lprintf(TAG, "Disconnected, retry %d/%d", wifi->m_retry_count, MAX_RETRIES);
-                wifi->connect();
-            } else {
-                eprintf(TAG, "Max retries reached, giving up");
+            int64_t delay_ms = RECONNECT_BASE_DELAY_MS << (wifi->m_retry_count < 8 ? wifi->m_retry_count : 8);
+            if (delay_ms > RECONNECT_MAX_DELAY_MS) {
+                delay_ms = RECONNECT_MAX_DELAY_MS;
             }
+            wifi->m_retry_count++;
+            lprintf(TAG, "Disconnected, retry %d in %" PRId64 " ms", wifi->m_retry_count, delay_ms);
+            esp_timer_stop(wifi->m_reconnect_timer);
+            esp_timer_start_once(wifi->m_reconnect_timer, delay_ms * 1000);
             break;
+        }
 
         default:
             break;
@@ -50,9 +57,14 @@ void wifiEventHandler(void * arg, esp_event_base_t event_base,
             lprintf(TAG, "Got IP: " IPSTR, IP2STR(&event->ip_info.ip));
             wifi->m_is_connected = true;
             wifi->m_retry_count = 0;
+            esp_timer_stop(wifi->m_reconnect_timer);
             xSemaphoreGive(wifi->m_connected_semaphore);
         }
     }
+}
+
+void reconnectTimerCallback(void * arg) {
+    static_cast<Wifi *>(arg)->connect();
 }
 
 Wifi::~Wifi() {
@@ -64,6 +76,12 @@ void Wifi::init(const char * ssid, const char * password) {
     m_password = password;
 
     esp_log_level_set("wifi", ESP_LOG_WARN);
+
+    esp_timer_create_args_t timer_args = {};
+    timer_args.callback = reconnectTimerCallback;
+    timer_args.arg = this;
+    timer_args.name = "wifi_reconnect";
+    ESP_ERROR_CHECK(esp_timer_create(&timer_args, &m_reconnect_timer));
 
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
