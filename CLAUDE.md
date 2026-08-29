@@ -8,8 +8,10 @@ ESP-IDF C++ firmware for the CrowPanel ESP32-S3 4.2" e-ink display (SSD1683, 400
 
 ## Build & Flash
 
+ESP-IDF v6.1 is installed with the ESP-IDF Installation Manager (eim, https://docs.espressif.com/projects/idf-im-ui/) under `~/.espressif/`. `tools/idf_env.sh` activates it (and pins the version tag); never source `~/esp/esp-idf/export.sh`.
+
 ```bash
-source ~/esp/esp-idf/export.sh
+. tools/idf_env.sh
 idf.py build
 idf.py -p /dev/cu.wchusbserial1420 flash
 idf.py -p /dev/cu.wchusbserial1420 monitor
