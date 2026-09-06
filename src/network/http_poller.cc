@@ -2,7 +2,9 @@
 
 #include <string.h>
 #include <stdlib.h>
+#include <stdio.h>
 #include <ctype.h>
+#include <inttypes.h>
 #include <vector>
 
 #include "freertos/FreeRTOS.h"
@@ -16,10 +18,8 @@
 
 static const char * TAG = "HTTP";
 
-static constexpr const char * GAMES_URL =
-    "https://games.roblox.com/v1/games?universeIds=9786190497";
-static constexpr const char * VOTES_URL =
-    "https://games.roblox.com/v1/games/votes?universeIds=9786190497";
+static constexpr const char * GAMES_URL_BASE = "https://games.roblox.com/v1/games?universeIds=";
+static constexpr const char * VOTES_URL_BASE = "https://games.roblox.com/v1/games/votes?universeIds=";
 
 static constexpr int HTTP_TIMEOUT_MS = 15000;
 
@@ -135,6 +135,41 @@ static bool extractString(const char * body, const char * key, char * buf, size_
     return true;
 }
 
+// Locate the JSON object in a "data":[...] array whose top-level "id" equals
+// universe_id, and copy it (NUL-terminated) into out_obj so the strstr-based
+// extractors can operate on just that object. The object ends at the next
+// "},{" separator or the end of the body. Returns false if not found.
+static bool findGameObject(const char * body, int64_t universe_id, std::vector<char> & out_obj) {
+    char key[32];
+    snprintf(key, sizeof(key), "\"id\":%" PRId64, universe_id);
+
+    const char * p = body;
+    while (true) {
+        p = strstr(p, key);
+        if (!p) {
+            return false;
+        }
+        // Make sure the id is not merely a prefix of a longer number
+        const char * after = p + strlen(key);
+        if (!isdigit((unsigned char)*after)) {
+            break;
+        }
+        p = after;
+    }
+
+    const char * end = strstr(p, "},{");
+    size_t len;
+    if (end) {
+        len = (size_t)(end - p) + 1;  // include the closing brace
+    } else {
+        len = strlen(p);
+    }
+
+    out_obj.assign(p, p + len);
+    out_obj.push_back('\0');
+    return true;
+}
+
 void httpPollerTask(void * arg) {
     static_cast<HttpPoller *>(arg)->run();
 }
@@ -144,6 +179,19 @@ void HttpPoller::init(Wifi & wifi, QueueHandle_t result_queue) {
     m_wifi = &wifi;
     m_result_queue = result_queue;
     m_wake_sem = xSemaphoreCreateBinary();
+    buildUrls();
+}
+
+void HttpPoller::buildUrls() {
+    char ids[GAME_COUNT * 21 + 1] = {};
+    size_t pos = 0;
+    for (int i = 0; i < GAME_COUNT; i++) {
+        const char * sep = (i == 0) ? "" : ",";
+        pos += (size_t)snprintf(ids + pos, sizeof(ids) - pos, "%s%" PRId64, sep, GAME_UNIVERSE_IDS[i]);
+    }
+    snprintf(m_games_url, sizeof(m_games_url), "%s%s", GAMES_URL_BASE, ids);
+    snprintf(m_votes_url, sizeof(m_votes_url), "%s%s", VOTES_URL_BASE, ids);
+    lprintf(TAG, "Games URL: %s", m_games_url);
 }
 
 void HttpPoller::start() {
@@ -186,8 +234,9 @@ void HttpPoller::run() {
 
         HttpResult result = {};
 
-        result.success = fetchGames(result);
-        result.votes_success = fetchVotes(result);
+        bool games_ok = fetchGames(result);
+        bool votes_ok = fetchVotes(result);
+        result.success = games_ok && votes_ok;
 
         xQueueOverwrite(m_result_queue, &result);
         m_force_fetch = false;
@@ -209,47 +258,74 @@ void HttpPoller::run() {
 
 bool HttpPoller::fetchGames(HttpResult & result) {
     std::vector<char> body;
-    if (!doGet(GAMES_URL, body)) {
+    if (!doGet(m_games_url, body)) {
         return false;
     }
 
-    const char * data = body.data();
+    bool all_ok = true;
+    std::vector<char> obj;
+    for (int i = 0; i < GAME_COUNT; i++) {
+        GameStats & g = result.games[i];
+        if (!findGameObject(body.data(), GAME_UNIVERSE_IDS[i], obj)) {
+            eprintf(TAG, "Games: universe %" PRId64 " not found in response", GAME_UNIVERSE_IDS[i]);
+            all_ok = false;
+            continue;
+        }
+        const char * data = obj.data();
 
-    bool ok = true;
-    ok &= extractInt(data, "\"playing\":", result.player_count);
-    ok &= extractInt(data, "\"visits\":", result.visits);
-    extractString(data, "\"name\":", result.game_name, sizeof(result.game_name));
+        bool ok = true;
+        ok &= extractInt(data, "\"playing\":", g.player_count);
+        ok &= extractInt(data, "\"visits\":", g.visits);
+        extractString(data, "\"name\":", g.game_name, sizeof(g.game_name));
 
-    // Extract date from "updated":"YYYY-MM-DDT..."
-    const char * upd = strstr(data, "\"updated\":\"");
-    if (upd) {
-        upd += strlen("\"updated\":\"");
-        strncpy(result.game_updated, upd, 10);
-        result.game_updated[10] = '\0';
+        // Extract date from "updated":"YYYY-MM-DDT..."
+        const char * upd = strstr(data, "\"updated\":\"");
+        if (upd) {
+            upd += strlen("\"updated\":\"");
+            strncpy(g.game_updated, upd, 10);
+            g.game_updated[10] = '\0';
+        }
+
+        g.success = ok;
+        if (ok) {
+            lprintf(TAG, "Games[%" PRId64 "]: %d players, %d visits, name=\"%s\"",
+                    GAME_UNIVERSE_IDS[i], g.player_count, g.visits, g.game_name);
+        } else {
+            eprintf(TAG, "Games[%" PRId64 "]: parse failed", GAME_UNIVERSE_IDS[i]);
+            all_ok = false;
+        }
     }
-
-    if (ok) {
-        lprintf(TAG, "Games: %d players, %d visits, name=\"%s\"",
-                result.player_count, result.visits, result.game_name);
-    }
-    return ok;
+    return all_ok;
 }
 
 bool HttpPoller::fetchVotes(HttpResult & result) {
     std::vector<char> body;
-    if (!doGet(VOTES_URL, body)) {
+    if (!doGet(m_votes_url, body)) {
         return false;
     }
 
-    const char * data = body.data();
-    bool ok = true;
-    ok &= extractInt(data, "\"upVotes\":", result.up_votes);
-    ok &= extractInt(data, "\"downVotes\":", result.down_votes);
+    bool all_ok = true;
+    std::vector<char> obj;
+    for (int i = 0; i < GAME_COUNT; i++) {
+        GameStats & g = result.games[i];
+        if (!findGameObject(body.data(), GAME_UNIVERSE_IDS[i], obj)) {
+            eprintf(TAG, "Votes: universe %" PRId64 " not found in response", GAME_UNIVERSE_IDS[i]);
+            all_ok = false;
+            continue;
+        }
+        const char * data = obj.data();
 
-    if (ok) {
-        lprintf(TAG, "Votes: %d up, %d down", result.up_votes, result.down_votes);
-    } else {
-        eprintf(TAG, "Votes parse failed (body: %.60s)", body.data());
+        bool ok = true;
+        ok &= extractInt(data, "\"upVotes\":", g.up_votes);
+        ok &= extractInt(data, "\"downVotes\":", g.down_votes);
+
+        g.votes_success = ok;
+        if (ok) {
+            lprintf(TAG, "Votes[%" PRId64 "]: %d up, %d down", GAME_UNIVERSE_IDS[i], g.up_votes, g.down_votes);
+        } else {
+            eprintf(TAG, "Votes[%" PRId64 "]: parse failed (obj: %.60s)", GAME_UNIVERSE_IDS[i], data);
+            all_ok = false;
+        }
     }
-    return ok;
+    return all_ok;
 }

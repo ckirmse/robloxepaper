@@ -11,6 +11,7 @@
 #include "screens/player_count.h"
 #include "screens/graph_screen.h"
 #include "history/player_history.h"
+#include "games.h"
 
 enum class ViewId {
     STATS = 0,
@@ -29,8 +30,12 @@ public:
     void poll();
 
 private:
-    static const int POLL_INTERVAL_COUNT = 4;
-    static const int POLL_INTERVALS[POLL_INTERVAL_COUNT];
+    static constexpr int POLL_INTERVAL_SEC = 60;
+
+    struct GameState {
+        GameStats last = {};
+        PlayerHistory history;
+    };
 
     Epaper m_epaper;
     LvglDisplay m_lvgl_display;
@@ -39,18 +44,23 @@ private:
     Buttons m_buttons;
     PlayerCountScreen m_stats_screen;
     GraphScreen m_graph_screen;
-    PlayerHistory m_history;
 
     QueueHandle_t m_http_result_queue = nullptr;
     QueueHandle_t m_button_queue = nullptr;
     QueueSetHandle_t m_queue_set = nullptr;
 
-    int m_poll_interval_index = 0;
     ViewId m_active_view = ViewId::STATS;
-    HttpResult m_last_result = {};
+    GameState m_games[GAME_COUNT];
+    int m_active_game = 0;
+    bool m_last_success = true;
     char m_last_fetch_time[12] = {};
+    lv_timer_t * m_rotate_timer = nullptr;
 
     void handleButton(const ButtonEvent & event);
     void handleHttpResult(const HttpResult & result);
     void cycleView();
+    void showGame(int index);
+    void nextGame();
+    void prevGame();
+    static void rotateTimerCb(lv_timer_t * timer);
 };

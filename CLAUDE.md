@@ -13,9 +13,11 @@ ESP-IDF v6.1 is installed with the ESP-IDF Installation Manager (eim, https://do
 ```bash
 . tools/idf_env.sh
 idf.py build
-idf.py -p /dev/cu.wchusbserial1420 flash
-idf.py -p /dev/cu.wchusbserial1420 monitor
+idf.py -p /dev/cu.wchusbserial14x0 flash
+idf.py -p /dev/cu.wchusbserial14x0 monitor
 ```
+
+The serial device name varies with the USB port the board is plugged into (seen as `/dev/cu.wchusbserial1410` and `/dev/cu.wchusbserial1420`). Check with `ls /dev/cu.wchusbserial*` before flashing.
 
 WiFi credentials are set via `idf.py menuconfig` → "Epaper App Config". Run once, then rebuild.
 
@@ -43,11 +45,11 @@ No tests or linter are configured.
 |--------|------|--------|
 | HOME   | 2    | Force immediate fetch (also deep-sleep wakeup) |
 | EXIT   | 1    | Enter deep sleep |
-| UP     | 6    | Increase poll interval |
-| DOWN   | 4    | Decrease poll interval |
-| OK     | 5    | Force full e-paper refresh (clears ghosting) |
+| UP     | 6    | Show next game (restarts 30s rotation dwell) |
+| DOWN   | 4    | Show previous game |
+| OK     | 5    | Toggle stats / graph view |
 
-**Serial port:** `/dev/cu.wchusbserial1420` (CH34x USB-UART bridge)
+**Serial port:** `/dev/cu.wchusbserial14x0` (CH34x USB-UART bridge; exact name depends on which USB port is used, run `ls /dev/cu.wchusbserial*`)
 
 ## Architecture
 
@@ -59,7 +61,8 @@ main/
   Kconfig.projbuild    # WiFi SSID/password via menuconfig
 
 src/
-  app.h / app.cc       # Top-level App class; owns all subsystems; poll loop
+  app.h / app.cc       # Top-level App class; owns all subsystems; poll loop; per-game state + rotation
+  games.h              # THE list of tracked universe ids (GAME_UNIVERSE_IDS) and rotation dwell
   log.h                # dprintf/lprintf/eprintf macros wrapping ESP_LOG*
   display/
     epaper.h/cc        # SSD1683 low-level driver (GPIO bit-bang SPI)
@@ -84,11 +87,15 @@ src/
 
 **E-paper refresh modes:** First display after boot uses `fullRefresh()` (~4s) to clear any ghost image. All subsequent updates use `fastRefresh()` (~1s). Pressing OK triggers `requestFullRefresh()` to force the next update to be a full refresh.
 
-**HTTP polling:** `HttpPoller` runs in a dedicated FreeRTOS task. On startup it waits for WiFi (up to 60s), then syncs time via SNTP (`pool.ntp.org`). Each poll cycle does two sequential GETs:
-1. `https://games.roblox.com/v1/games?universeIds=9786190497` → name, playing, visits, updated
-2. `https://games.roblox.com/v1/games/votes?universeIds=9786190497` → upVotes, downVotes
+**Multiple games:** `src/games.h` holds `GAME_UNIVERSE_IDS`; add an id there and everything else (URLs, `HttpResult::games[]`, history slots, rotation) follows. `App` keeps a `GameState` (last `GameStats` + `PlayerHistory`) per game and an `m_active_game` index. An LVGL timer (`GAME_ROTATE_SEC`, 30s) calls `nextGame()`; UP/DOWN switch manually and restart the dwell. Rotation changes only the game, not the stats/graph view. Poll interval is fixed at 60s.
 
-JSON is parsed with `strstr`/`strtol` (no JSON library). `HttpResult` is a POD struct passed via `xQueueOverwrite`.
+**HTTP polling:** `HttpPoller` runs in a dedicated FreeRTOS task. On startup it waits for WiFi (up to 60s), then syncs time via SNTP (`pool.ntp.org`). Each poll cycle does two sequential GETs covering all games at once (`universeIds=A,B,...`):
+1. `https://games.roblox.com/v1/games?universeIds=...` → name, playing, visits, updated
+2. `https://games.roblox.com/v1/games/votes?universeIds=...` → upVotes, downVotes
+
+JSON is parsed with `strstr`/`strtol` (no JSON library): `findGameObject()` isolates each array element by its `"id":<universeId>` and the per-key extractors run on that slice. `HttpResult` (one `GameStats` per game) is a POD struct passed via `xQueueOverwrite`.
+
+**History:** `PlayerHistory` persists 60 samples per game in NVS under per-slot keys (`ph<slot>_head/count/buf`).
 
 **Fonts:** Generated with `npx lv_font_conv` from source font files in `~/fonts/` and `~/Roblox-Builder-Fonts/`. The generated `.c` files are checked into `src/fonts/`. To regenerate:
 

@@ -3,6 +3,7 @@
 #include <time.h>
 #include <stdio.h>
 #include <string.h>
+#include <inttypes.h>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -17,8 +18,6 @@ static const char * TAG = "APP";
 // US Pacific (PST=UTC-8 with PDT daylight saving)
 static constexpr const char * TZ_PACIFIC = "PST8PDT,M3.2.0,M11.1.0";
 
-const int App::POLL_INTERVALS[App::POLL_INTERVAL_COUNT] = {60, 120, 300, 1800};
-
 App::App() :
     m_lvgl_display(m_epaper) {
     m_http_result_queue = xQueueCreate(1, sizeof(HttpResult));
@@ -26,7 +25,6 @@ App::App() :
     m_queue_set = xQueueCreateSet(9);  // button queue (8) + http result queue (1)
     xQueueAddToSet(m_http_result_queue, m_queue_set);
     xQueueAddToSet(m_button_queue, m_queue_set);
-    m_last_result.success = true;  // first fetch sets error icon only on actual failure
 }
 
 App::~App() {
@@ -50,14 +48,21 @@ void App::init() {
     m_stats_screen.init();
     m_graph_screen.init();
 
-    m_history.load();
+    for (int i = 0; i < GAME_COUNT; i++) {
+        m_games[i].history.load(i);
+    }
 
     lv_screen_load(m_stats_screen.lvglScreen());
+
+    if (GAME_COUNT > 1) {
+        // Runs from lv_timer_handler() in LvglDisplay::tick() on this task
+        m_rotate_timer = lv_timer_create(rotateTimerCb, GAME_ROTATE_SEC * 1000, this);
+    }
 
     m_wifi.init(CONFIG_WIFI_SSID, CONFIG_WIFI_PASSWORD);
 
     m_http_poller.init(m_wifi, m_http_result_queue);
-    m_http_poller.setPollIntervalSec(POLL_INTERVALS[m_poll_interval_index]);
+    m_http_poller.setPollIntervalSec(POLL_INTERVAL_SEC);
     m_http_poller.start();
 
     m_buttons.init(m_button_queue);
@@ -65,7 +70,8 @@ void App::init() {
     setenv("TZ", TZ_PACIFIC, 1);
     tzset();
 
-    lprintf(TAG, "App initialized, poll interval %ds", POLL_INTERVALS[m_poll_interval_index]);
+    lprintf(TAG, "App initialized, %d games, poll interval %ds, rotate %ds",
+            GAME_COUNT, POLL_INTERVAL_SEC, GAME_ROTATE_SEC);
 }
 
 void App::poll() {
@@ -96,6 +102,41 @@ void App::cycleView() {
     }
 }
 
+void App::rotateTimerCb(lv_timer_t * timer) {
+    App * self = static_cast<App *>(lv_timer_get_user_data(timer));
+    self->nextGame();
+}
+
+void App::nextGame() {
+    showGame((m_active_game + 1) % GAME_COUNT);
+}
+
+void App::prevGame() {
+    showGame((m_active_game + GAME_COUNT - 1) % GAME_COUNT);
+}
+
+// Push every field of the given game into both screens and restart the dwell timer
+void App::showGame(int index) {
+    m_active_game = index;
+    const GameState & game = m_games[index];
+    lprintf(TAG, "Showing game %d (universe %" PRId64 ")", index, GAME_UNIVERSE_IDS[index]);
+
+    m_stats_screen.setGameName(game.last.game_name);
+    m_stats_screen.setCount(game.last.player_count);
+    m_stats_screen.setVisits(game.last.visits);
+    m_stats_screen.setUpvotes(game.last.up_votes, game.last.down_votes);
+    m_stats_screen.setGameUpdated(game.last.game_updated);
+    m_stats_screen.setFetchTime(m_last_fetch_time);
+
+    m_graph_screen.setGameName(game.last.game_name);
+    m_graph_screen.setCurrentCount(game.last.player_count);
+    m_graph_screen.setHistory(game.history);
+
+    if (m_rotate_timer) {
+        lv_timer_reset(m_rotate_timer);
+    }
+}
+
 void App::handleButton(const ButtonEvent & event) {
     switch (event.id) {
     case ButtonId::HOME:
@@ -108,25 +149,15 @@ void App::handleButton(const ButtonEvent & event) {
         cycleView();
         break;
 
-    case ButtonId::UP: {
-        if (m_poll_interval_index < POLL_INTERVAL_COUNT - 1) {
-            m_poll_interval_index++;
-        }
-        int interval = POLL_INTERVALS[m_poll_interval_index];
-        m_http_poller.setPollIntervalSec(interval);
-        lprintf(TAG, "UP pressed — poll interval → %ds", interval);
+    case ButtonId::UP:
+        lprintf(TAG, "UP pressed — next game");
+        nextGame();
         break;
-    }
 
-    case ButtonId::DOWN: {
-        if (m_poll_interval_index > 0) {
-            m_poll_interval_index--;
-        }
-        int interval = POLL_INTERVALS[m_poll_interval_index];
-        m_http_poller.setPollIntervalSec(interval);
-        lprintf(TAG, "DOWN pressed — poll interval → %ds", interval);
+    case ButtonId::DOWN:
+        lprintf(TAG, "DOWN pressed — previous game");
+        prevGame();
         break;
-    }
 
     case ButtonId::EXIT:
         lprintf(TAG, "EXIT pressed — showing stale indicator then sleeping");
@@ -144,19 +175,16 @@ void App::handleButton(const ButtonEvent & event) {
 }
 
 void App::handleHttpResult(const HttpResult & result) {
-    if (result.success != m_last_result.success) {
+    if (result.success != m_last_success) {
         m_stats_screen.setError(!result.success);
         m_graph_screen.setError(!result.success);
     }
+    m_last_success = result.success;
 
     if (!result.success) {
         eprintf(TAG, "HTTP fetch failed");
-        m_last_result.success = false;
         return;
     }
-
-    lprintf(TAG, "Got player count: %d, visits: %d",
-            result.player_count, result.visits);
 
     char fetch_time[12] = "12:00 AM";
     time_t now_ts = time(nullptr);
@@ -166,34 +194,41 @@ void App::handleHttpResult(const HttpResult & result) {
         strftime(fetch_time, sizeof(fetch_time), "%l:%M %p", &now_tm);
     }
 
-    if (strcmp(result.game_name, m_last_result.game_name) != 0) {
-        m_stats_screen.setGameName(result.game_name);
+    for (int i = 0; i < GAME_COUNT; i++) {
+        const GameStats & fresh = result.games[i];
+        GameState & game = m_games[i];
+        lprintf(TAG, "Game %d: %d players, %d visits", i, fresh.player_count, fresh.visits);
+
+        game.history.push(fresh.player_count, (int32_t)now_ts);
+
+        if (i == m_active_game) {
+            // Only touch labels that changed so partial refresh stays small
+            const GameStats & prev = game.last;
+            if (strcmp(fresh.game_name, prev.game_name) != 0) {
+                m_stats_screen.setGameName(fresh.game_name);
+                m_graph_screen.setGameName(fresh.game_name);
+            }
+            if (fresh.player_count != prev.player_count) {
+                m_stats_screen.setCount(fresh.player_count);
+                m_graph_screen.setCurrentCount(fresh.player_count);
+            }
+            if (fresh.visits != prev.visits) {
+                m_stats_screen.setVisits(fresh.visits);
+            }
+            if (fresh.up_votes != prev.up_votes || fresh.down_votes != prev.down_votes) {
+                m_stats_screen.setUpvotes(fresh.up_votes, fresh.down_votes);
+            }
+            if (strcmp(fresh.game_updated, prev.game_updated) != 0) {
+                m_stats_screen.setGameUpdated(fresh.game_updated);
+            }
+            m_graph_screen.setHistory(game.history);
+        }
+
+        game.last = fresh;
     }
-    if (result.player_count != m_last_result.player_count) {
-        m_stats_screen.setCount(result.player_count);
-    }
-    if (result.visits != m_last_result.visits) {
-        m_stats_screen.setVisits(result.visits);
-    }
-    if (result.up_votes != m_last_result.up_votes || result.down_votes != m_last_result.down_votes) {
-        m_stats_screen.setUpvotes(result.up_votes, result.down_votes);
-    }
-    if (strcmp(result.game_updated, m_last_result.game_updated) != 0) {
-        m_stats_screen.setGameUpdated(result.game_updated);
-    }
+
     if (strcmp(fetch_time, m_last_fetch_time) != 0) {
         m_stats_screen.setFetchTime(fetch_time);
         strcpy(m_last_fetch_time, fetch_time);
     }
-
-    m_history.push(result.player_count, (int32_t)now_ts);
-    if (strcmp(result.game_name, m_last_result.game_name) != 0) {
-        m_graph_screen.setGameName(result.game_name);
-    }
-    if (result.player_count != m_last_result.player_count) {
-        m_graph_screen.setCurrentCount(result.player_count);
-    }
-    m_graph_screen.setHistory(m_history);
-
-    m_last_result = result;
 }

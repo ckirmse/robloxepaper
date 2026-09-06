@@ -17,8 +17,9 @@ public:
     PlayerHistory(const PlayerHistory &) = delete;
     PlayerHistory & operator=(const PlayerHistory &) = delete;
 
-    // Load ring buffer from NVS. Returns false if no saved data (first boot) or on error.
-    bool load();
+    // Load ring buffer for the given slot from NVS.
+    // Returns false if no saved data (first boot) or on error.
+    bool load(int slot);
 
     // Append a sample and persist to NVS. Returns false on NVS write error.
     bool push(int32_t count, int32_t timestamp);
@@ -36,6 +37,7 @@ private:
     HistorySample m_buf[MAX_SAMPLES] = {};
     int m_head = 0;
     int m_count = 0;
+    int m_slot = 0;
 
     bool saveToNvs() const;
 };
